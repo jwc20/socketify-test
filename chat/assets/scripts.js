@@ -1,9 +1,7 @@
-
-function get_room(name, token, on_history, on_message){
-
-    const ws = new WebSocket(`ws://localhost:3000?room=${name}&token=${token}`);
+function get_room(name, on_history, on_message){
+    const ws = new WebSocket(`ws://localhost:3000?room=${name}`);
     var status = 'pending';
-    const connection = new Promise((resolve)=>{
+    const connection = new Promise((resolve) => {
         ws.onopen = function(){
             status = 'connected';
             resolve(true)
@@ -19,9 +17,9 @@ function get_room(name, token, on_history, on_message){
     }
     ws.onmessage = (event) => {
        const message = JSON.parse(event.data);  
-        if(message instanceof Array){
+        if(Array.isArray(message)){
             on_history(message)
-        }else{
+        } else {
             on_message(message)
         }
     }
@@ -46,46 +44,9 @@ function get_utc_date(){
     return new Date().toLocaleTimeString('en-US', { hour12:false, hour: '2-digit', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short' })
 }
 
-function get_session() {
-    let name = "session=";
-    let decodedCookie = decodeURIComponent(document.cookie);
-    let ca = decodedCookie.split(';');
-    for (let i = 0; i < ca.length; i++) {
-        let c = ca[i];
-        while (c.charAt(0) == ' ') {
-            c = c.substring(1);
-        }
-        if (c.indexOf(name) == 0) {
-            return c.substring(name.length, c.length);
-        }
-    }
-    return "";
-}
-
-async function get_user() {
-    const session = get_session()
-    if (!session) return null;
-    try {
-        const response = await fetch('https://api.github.com/user', {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session}`,
-                'Accept': 'application/json'
-            }
-        })
-        return await response?.json()
-    } catch (err) {
-        console.error(err);
-        return null;
-    }
-}
-
-function request_login(){
-    return document.location.href = 'https://github.com/login/oauth/authorize?scope=user:email&client_id=9481803176fb73d616b7';
-}
 let current_room = null;
 let last_room_name = 'general';
+
 async function send_message(event){
     if(event && event.key?.toLowerCase() !== 'enter') return;
     
@@ -98,7 +59,7 @@ async function send_message(event){
         })
         //clean
         message.value = ''
-    }else {
+    } else {
         await open_room(last_room_name)
         send_message();
     }
@@ -108,23 +69,19 @@ async function open_room(name){
     last_room_name = name;
     current_room?.close()
     
-    const user = await get_user();
-    if(!user){
-        return request_login();
-    }
     const chat = document.querySelector('.chat-messages');
     
-    const room = get_room(name, get_session(), (history)=> {
+    const room = get_room(name, (history) => {
         //clear
         chat.innerHTML = '';
         //add messages
         for(let message of history){
-            chat.appendChild(format_message(message, user));
+            chat.appendChild(format_message(message));
         }
         chat.scroll(0, chat.scrollHeight)
-    }, (message)=>{
+    }, (message) => {
         //add message
-        chat.appendChild(format_message(message, user));
+        chat.appendChild(format_message(message));
 
         //trim size
         while(chat.childNodes.length > 100){
@@ -135,54 +92,35 @@ async function open_room(name){
     await room.wait_connection()
     current_room = room;
 }
-const markdown = new showdown.Converter({simpleLineBreaks: true,openLinksInNewWindow: true, emoji: true, ghMentions: true, tables: true, strikethrough: true, tasklists: true});
 
-function format_message(message, user){
+const markdown = new showdown.Converter({simpleLineBreaks: true, openLinksInNewWindow: true, emoji: true, ghMentions: true, tables: true, strikethrough: true, tasklists: true});
+
+function format_message(message){
     const message_element = document.createElement("div");
-    if(message.login === user.login){
-        message.name = 'You';
-        message_element.classList.add('chat-message-right');
-    }else{
-        message.name = message.name || message.login;
-        message_element.classList.add('chat-message-left'); 
-    }
-    
+    message_element.classList.add('chat-message-left'); 
     message_element.classList.add('pb-4');
     
     const header = document.createElement("div");
-    image = new Image(40, 40);
-    image.src = message.avatar_url;
+    const image = new Image(40, 40);
+    image.src = message.avatar_url || 'https://example.com/default-avatar.png';
     image.classList.add('rounded-circle');
     image.classList.add('mr-1');
-    image.alt = message.name;
+    image.alt = message.name || 'Anonymous';
 
     const date = document.createElement("div");
-    date.classList.add('text-muted');
-    date.classList.add('small');
-    date.classList.add('text-nowrap');
-    date.classList.add('mt-2');
+    date.classList.add('text-muted', 'small', 'text-nowrap', 'mt-2');
     date.textContent = message.datetime;
-    header.addEventListener("click", ()=> {
-        window.open(message.html_url, '_blank').focus();
-    });
     header.appendChild(image);
     header.appendChild(date);
 
     message_element.appendChild(header);
 
     const body = document.createElement("div");
-    body.classList.add('flex-shrink-1');
-    body.classList.add('bg-light');
-    body.classList.add('rounded');
-    body.classList.add('py-2');
-    body.classList.add('px-3');
-    body.classList.add('mr-3');
+    body.classList.add('flex-shrink-1', 'bg-light', 'rounded', 'py-2', 'px-3', 'mr-3');
     
     const author = document.createElement("div")
-    author.classList.add('font-weight-bold');
-    author.classList.add('mb-1');
-    author.textContent = message.name;
-    
+    author.classList.add('font-weight-bold', 'mb-1');
+    author.textContent = message.name || 'Anonymous';
     
     body.appendChild(author);
     const content = document.createElement("div");
@@ -194,8 +132,5 @@ function format_message(message, user){
     return message_element;
 }
 
-get_user().then((is_logged_in)=>{
-    if(is_logged_in){
-         open_room("general");
-    }
- }); 
+// Automatically open the general room when the script loads
+open_room("general");
